@@ -53,15 +53,20 @@ x-vippet: &vippet
     LIVE_STREAM_SERVER_PORT: ${LIVE_STREAM_SERVER_PORT:-8554}
     RTSPSRC_DEFAULT_LATENCY_MS: ${RTSPSRC_DEFAULT_LATENCY_MS:-100}
     METRICS_MANAGER_URL: ${METRICS_MANAGER_URL:-http://metrics-manager:9090}
+    TSAM_HOST: ${TSAM_HOST:-ia-time-series-analytics-microservice}
+    TSAM_KAPACITOR_PORT: ${TSAM_KAPACITOR_PORT:-9092}
     http_proxy: ${http_proxy}
     https_proxy: ${https_proxy}
-    no_proxy: "${no_proxy:+${no_proxy},}mediamtx,metrics-manager"
+    no_proxy: "${no_proxy:+${no_proxy},}mediamtx,metrics-manager,ia-time-series-analytics-microservice"
   device_cgroup_rules:
     # Broad access to USB devices is required to support a wide range of USB cameras.
     - 'c 189:* rmw'
     - 'a 189:* rwm'
+  group_add:
+    - "${DOCKER_GID:-984}"
   volumes:
     - "/dev:/dev"
+    - /var/run/docker.sock:/var/run/docker.sock:ro
     - ./shared/images/:/images
     - ./shared/models/:/models
     - ./shared/videos/:/videos
@@ -258,7 +263,6 @@ services:
         TIMESERIES_UID: ${TIMESERIES_UID}
     container_name: ia-timeseries-ingestion
     image: ${DOCKER_REGISTRY}intel/ia-timeseries-ingestion:2026.1.0
-    read_only: true
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -266,11 +270,13 @@ services:
       HOST: ia-time-series-analytics-microservice
       PORT: 5000
       TOPIC: wind-turbine-data
+      METADATA_DIR: /metadata
       no_proxy: "ia-time-series-analytics-microservice,${no_proxy}"
       NO_PROXY: "ia-time-series-analytics-microservice,${no_proxy}"
       PYTHONUNBUFFERED: 1
     volumes:
       - ./timeseries-ingestion/input:/app/input:ro
+      - ./shared/metadata/:/metadata
   ia-time-series-analytics-microservice:
     build:
       context: ./../../microservices/time-series-analytics
@@ -302,7 +308,7 @@ services:
       KAPACITOR_INFLUXDB_0_USERNAME: ""
       KAPACITOR_INFLUXDB_0_PASSWORD: ""
       PROFILING_MODE: "false"
-      KAPACITOR_URL: http://ia-time-series-analytics-microservice:9092/
+      KAPACITOR_URL: http://ia-time-series-analytics-microservice:9092
       KAPACITOR_UNSAFE_SSL: "true"
       KAPACITOR_INFLUXDB_0_URLS_0: ""
       INFLUXDB_PORT: 8086

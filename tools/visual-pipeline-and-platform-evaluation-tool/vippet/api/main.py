@@ -99,6 +99,7 @@ def register_routers(app: FastAPI) -> None:
         pipeline_templates,
         pipelines,
         tests,
+        timeseries,
         videos,
         cameras,
     )
@@ -115,6 +116,7 @@ def register_routers(app: FastAPI) -> None:
     )
     app.include_router(pipelines.router, prefix="/pipelines", tags=["pipelines"])
     app.include_router(tests.router, prefix="/tests", tags=["tests"])
+    app.include_router(timeseries.router, prefix="/timeseries", tags=["timeseries"])
     app.include_router(videos.router, prefix="/videos", tags=["videos"])
     app.include_router(images.router, prefix="/images", tags=["images"])
     app.include_router(cameras.router, prefix="/cameras", tags=["cameras"])
