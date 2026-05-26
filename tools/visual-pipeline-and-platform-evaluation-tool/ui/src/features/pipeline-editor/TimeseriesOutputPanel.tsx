@@ -42,7 +42,6 @@ const TimeseriesOutputPanel = () => {
   const [activeTab, setActiveTab] = useState("charts");
   const metricHistory = useMetricHistory();
 
-  // Poll the /api/v1/timeseries/data endpoint
   useEffect(() => {
     let active = true;
 
@@ -55,7 +54,6 @@ const TimeseriesOutputPanel = () => {
           setData(json);
           setError(null);
 
-          // Add one point per poll (the latest record) — mirrors how CPU/GPU accumulate
           if (json.analytics.length > 0) {
             const latest = json.analytics[json.analytics.length - 1];
             const now = Date.now();
@@ -82,7 +80,6 @@ const TimeseriesOutputPanel = () => {
     };
   }, []);
 
-  // Chart data transforms — sliding window, real timestamps
   const inferenceChart: MetricDataPoint[] = useMemo(
     () => analyticsHistory.map((r) => ({ timestamp: r.timestamp, value: r.inference_time_ms })),
     [analyticsHistory],
@@ -95,7 +92,6 @@ const TimeseriesOutputPanel = () => {
 
   const yMax = (pts: MetricDataPoint[]) => Math.ceil(Math.max(...pts.map((p) => p.value ?? 0), 1) * 1.2);
 
-  // System metrics from the metrics stream
   const cpuChart: MetricDataPoint[] = useMemo(
     () => metricHistory.map((p) => ({ timestamp: p.timestamp, value: p.cpu ?? 0 })),
     [metricHistory],
@@ -105,7 +101,6 @@ const TimeseriesOutputPanel = () => {
     return metricHistory.map((p) => {
       const gpuIds = Object.keys(p.gpus);
       if (gpuIds.length === 0) return { timestamp: p.timestamp, value: 0 };
-      // Use max engine usage across all GPUs
       const maxUsage = Math.max(
         ...gpuIds.map((id) => {
           const g = p.gpus[id];
@@ -116,7 +111,6 @@ const TimeseriesOutputPanel = () => {
     });
   }, [metricHistory]);
 
-  // Latest records for metadata JSON display
   const latestIngestion = data.ingestion[data.ingestion.length - 1];
   const ingestionHtml = useMemo(
     () => (latestIngestion ? highlightJson(JSON.stringify(latestIngestion, null, 2)) : ""),
