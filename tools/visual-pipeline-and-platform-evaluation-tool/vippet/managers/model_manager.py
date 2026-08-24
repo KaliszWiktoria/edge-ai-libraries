@@ -107,7 +107,7 @@ UPLOAD_CHUNK_SIZE: int = 8 * 1024 * 1024  # 8 MiB
 def _precision_is_complete(category: str | None, model_path: str) -> bool:
     """Return True only when the model files at *model_path* are complete.
 
-    For GenAI models the path points at a directory.  Checking that the
+    For GenAI models the path points at a directory. Checking that the
     directory exists is not enough — the download process creates it before
     any weights are written, so a failed download (e.g. due to a missing or
     invalid HF_TOKEN) can leave an empty or partially-populated directory
