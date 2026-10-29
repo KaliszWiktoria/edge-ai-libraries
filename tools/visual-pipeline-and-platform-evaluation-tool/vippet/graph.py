@@ -629,30 +629,20 @@ class Graph:
                 if "location" in node.data:
                     location = node.data["location"]
 
-                    # Ensure TS file exists before using it
-                    ts_path = videos_manager.get_ts_path(location)
-                    if ts_path is None:
+                    source_filename = os.path.basename(location)
+                    source_path = videos_manager.get_video_path(source_filename)
+                    if source_path is None and os.path.isfile(location):
+                        source_path = location
+                    if source_path is None:
                         raise ValueError(
-                            f"Cannot get TS path for video '{location}'. "
-                            f"Ensure the video file exists and has a supported format."
+                            f"Cannot find source video '{source_filename}' for TS conversion."
                         )
 
-                    # Verify TS file actually exists on disk
-                    if not os.path.isfile(ts_path):
-                        # Try to create TS file
-                        source_filename = os.path.basename(location)
-                        source_path = videos_manager.get_video_path(source_filename)
-
-                        if source_path is None:
-                            raise ValueError(
-                                f"Cannot find source video '{source_filename}' for TS conversion."
-                            )
-
-                        ts_path = videos_manager.ensure_ts_file(source_path)
-                        if ts_path is None:
-                            raise ValueError(
-                                f"Failed to create TS file for video '{source_filename}'."
-                            )
+                    ts_path = videos_manager.ensure_ts_file(source_path, looping=True)
+                    if ts_path is None or not os.path.isfile(ts_path):
+                        raise ValueError(
+                            f"Failed to create loopable TS file for video '{source_filename}'."
+                        )
 
                     # Store only the filename, not the full path
                     # _input_video_name_to_path will convert it back to full path later
@@ -678,6 +668,64 @@ class Graph:
                     node.data["max-size-time"] = "10000000000"
                 if not node.data.get("max-files"):
                     node.data["max-files"] = "100"
+
+        decoder_types = {
+            "avdec_h264",
+            "avdec_h265",
+            "avdec_mjpeg",
+            "vah264dec",
+            "vah265dec",
+            "vajpegdec",
+            "jpegdec",
+            "pngdec",
+            "avdec_bmp",
+            "avdec_tiff",
+        }
+        decoder_nodes = [
+            node
+            for node in modified_graph.nodes
+            if node.type.split()[0] in decoder_types
+            or node.type.split()[0].startswith("varenderD")
+            and node.type.split()[0].endswith(("h264dec", "h265dec", "jpegdec"))
+        ]
+        next_id = max(
+            (
+                int(identifier)
+                for identifier in [
+                    *(node.id for node in modified_graph.nodes),
+                    *(edge.id for edge in modified_graph.edges),
+                ]
+                if identifier.isdigit()
+            ),
+            default=-1,
+        ) + 1
+
+        for decoder in decoder_nodes:
+            incoming_edges = [
+                edge for edge in modified_graph.edges if edge.target == decoder.id
+            ]
+            if not incoming_edges:
+                continue
+
+            identity_id = str(next_id)
+            next_id += 1
+            identity = Node(
+                id=identity_id,
+                type="identity",
+                data={"single-segment": "true"},
+            )
+            decoder_index = modified_graph.nodes.index(decoder)
+            modified_graph.nodes.insert(decoder_index + 1, identity)
+            for edge in incoming_edges:
+                edge.target = identity_id
+            modified_graph.edges.append(
+                Edge(
+                    id=str(next_id),
+                    source=identity_id,
+                    target=decoder.id,
+                )
+            )
+            next_id += 1
 
         return modified_graph
 

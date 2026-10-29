@@ -2126,7 +2126,24 @@ class TestBuildPipelineCommandLooping(unittest.TestCase):
         self.assertIn("fakesink", pipeline_cmd.command)
 
     def test_looping_applied_when_max_runtime_positive_and_live_stream_mode(self):
-        """Test that looping modifications are applied for live stream mode with max_runtime > 0."""
+        """Test that live stream mode keeps file sources seekable for replay."""
+        file_graph = Graph.from_dict(
+            {
+                "nodes": [
+                    {"id": "0", "type": "filesrc", "data": {"location": "/tmp/input.mp4"}},
+                    {"id": "1", "type": "fakesink", "data": {"name": "default_output_sink"}},
+                ],
+                "edges": [{"id": "0", "source": "0", "target": "1"}],
+            }
+        )
+        specs = [
+            InternalPipelinePerformanceSpec(
+                pipeline_id="/pipelines/test-looping/variants/cpu",
+                pipeline_name="test-looping",
+                pipeline_graph=file_graph,
+                streams=1,
+            )
+        ]
         execution_config = create_internal_execution_config(
             output_mode=InternalOutputMode.LIVE_STREAM,
             max_runtime=60,
@@ -2134,9 +2151,12 @@ class TestBuildPipelineCommandLooping(unittest.TestCase):
         )
 
         pipeline_cmd = self.manager.build_pipeline_command(
-            self.specs, execution_config, self.job_id
+            specs, execution_config, self.job_id
         )
 
+        self.assertIn("filesrc", pipeline_cmd.command)
+        self.assertNotIn("multifilesrc", pipeline_cmd.command)
+        self.assertNotIn("loop=true", pipeline_cmd.command)
         self.assertIn("rtspclientsink", pipeline_cmd.command)
         pipeline_id = "/pipelines/test-looping/variants/cpu"
         self.assertIn(pipeline_id, pipeline_cmd.live_stream_urls)

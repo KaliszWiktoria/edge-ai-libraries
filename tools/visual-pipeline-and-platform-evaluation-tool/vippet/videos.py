@@ -500,6 +500,8 @@ class VideosManager:
             logger.debug(f"Scanning directory '{subdir}' for video files.")
 
             for entry in os.listdir(subdir):
+                if entry.endswith(".loop.ts"):
+                    continue
                 file_path = os.path.join(subdir, entry)
                 if not os.path.isfile(file_path):
                     continue
@@ -679,7 +681,9 @@ class VideosManager:
 
             self.ensure_ts_file(file_path)
 
-    def ensure_ts_file(self, source_path: str) -> Optional[str]:
+    def ensure_ts_file(
+        self, source_path: str, looping: bool = False
+    ) -> Optional[str]:
         """
         Ensures a TS file exists for the given video file.
         If TS file does not exist, converts the source video to TS format.
@@ -692,6 +696,7 @@ class VideosManager:
 
         Args:
             source_path: Full path to the source video file.
+            looping: If True, create a dedicated TS file for repeated playback.
 
         Returns:
             Path to the TS file if successful, None on error.
@@ -707,7 +712,8 @@ class VideosManager:
         # Build TS path alongside the source file (same subdir -> so that
         # 'auto' videos get their TS in 'auto' and 'uploaded' videos get
         # theirs in 'uploaded').
-        ts_filename = f"{os.path.splitext(source_filename)[0]}.ts"
+        ts_suffix = ".loop.ts" if looping else ".ts"
+        ts_filename = f"{os.path.splitext(source_filename)[0]}{ts_suffix}"
         ts_path = os.path.join(source_dir, ts_filename)
 
         # Check if TS file already exists
@@ -804,7 +810,11 @@ class VideosManager:
             )
             return False
 
-        parser = "h264parse" if codec == "h264" else "h265parse"
+        parser = (
+            "h264parse config-interval=-1"
+            if codec == "h264"
+            else "h265parse config-interval=-1"
+        )
         caps = (
             "video/x-h264,stream-format=byte-stream"
             if codec == "h264"

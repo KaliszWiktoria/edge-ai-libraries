@@ -170,10 +170,13 @@ class TestRunPipeline(unittest.TestCase):
         def fake_parse_pipeline(_desc: str):
             return fake_pipeline, True
 
-        def fake_run_pipeline_for_duration(pipeline, max_run_time_sec, mode):
+        def fake_run_pipeline_for_duration(
+            pipeline, max_run_time_sec, mode, repeat_on_eos=False
+        ):
             self.assertIs(pipeline, fake_pipeline)
             self.assertEqual(max_run_time_sec, 2.0)
             self.assertEqual(mode, "validation")
+            self.assertFalse(repeat_on_eos)
             # True, None -> success via EOS or clean completion before max-runtime.
             return True, None
 
@@ -198,9 +201,12 @@ class TestRunPipeline(unittest.TestCase):
         def fake_parse_pipeline(_desc: str):
             return fake_pipeline, True
 
-        def fake_run_pipeline_for_duration(pipeline, max_run_time_sec, mode):
+        def fake_run_pipeline_for_duration(
+            pipeline, max_run_time_sec, mode, repeat_on_eos=False
+        ):
             self.assertIs(pipeline, fake_pipeline)
             self.assertEqual(mode, "normal")
+            self.assertFalse(repeat_on_eos)
             # True, "max_runtime" -> success via max-runtime (no error observed).
             return True, "max_runtime"
 
@@ -225,8 +231,11 @@ class TestRunPipeline(unittest.TestCase):
         def fake_parse_pipeline(_desc: str):
             return fake_pipeline, True
 
-        def fake_run_pipeline_for_duration(pipeline, max_run_time_sec, mode):
+        def fake_run_pipeline_for_duration(
+            pipeline, max_run_time_sec, mode, repeat_on_eos=False
+        ):
             self.assertIs(pipeline, fake_pipeline)
+            self.assertFalse(repeat_on_eos)
             # False, "error" -> runtime error was observed.
             return False, "error"
 
@@ -391,6 +400,24 @@ class TestPipelineRunner(unittest.TestCase):
             self.assertTrue(runner._state.error_seen)
             self.assertEqual(runner._state.reason, "error")
             mock_loop.quit.assert_called_once()
+
+    def test_pipeline_runner_stops_on_eos(self) -> None:
+        """A single gst_runner process should finish cleanly on EOS."""
+        fake_pipeline = mock.create_autospec(gst_runner.Gst.Pipeline)
+        runner = gst_runner._PipelineRunner(
+            fake_pipeline,
+            max_run_time_sec=60,
+            mode="normal",
+        )
+        message = mock.Mock()
+        message.type = gst_runner.Gst.MessageType.EOS
+        loop = mock.Mock()
+
+        result = runner._on_bus_message(mock.Mock(), message, loop)
+
+        self.assertTrue(result)
+        self.assertTrue(runner._state.eos_seen)
+        loop.quit.assert_called_once()
 
     def test_max_runtime_sets_shutdown_in_progress(self) -> None:
         """_max_runtime_enforcement_thread should set shutdown_in_progress before stopping."""

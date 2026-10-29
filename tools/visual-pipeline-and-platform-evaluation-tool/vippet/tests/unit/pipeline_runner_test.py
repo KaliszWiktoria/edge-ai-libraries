@@ -197,6 +197,25 @@ class TestPipelineRunnerNormalMode(unittest.TestCase):
         self.assertIn("last average fps", result.details)
         self.assertIn("primary source", result.details)
 
+    @patch("pipeline_runner.time.monotonic", side_effect=[0, 0, 1, 1, 10])
+    def test_repeat_on_eos_restarts_with_remaining_runtime(self, mock_monotonic):
+        runner = PipelineRunner(mode="normal", max_runtime=10, repeat_on_eos=True)
+        run_durations: list[float] = []
+
+        def finish_run(_pipeline_command, _total_streams):
+            run_durations.append(runner.max_runtime)
+            return PipelineResult(exit_code=0)
+
+        with patch.object(runner, "_run_normal", side_effect=finish_run) as run_normal:
+            result = runner.run(
+                pipeline_command=self.test_pipeline_command, total_streams=1
+            )
+
+        self.assertEqual(run_durations, [10, 9])
+        self.assertEqual(run_normal.call_count, 2)
+        self.assertEqual(runner.max_runtime, 10)
+        self.assertEqual(result.exit_code, 0)
+
     @patch("pipeline_runner.Popen")
     def test_stop_pipeline_normal_mode(self, mock_popen):
         """PipelineRunner in normal mode should handle cancellation correctly."""

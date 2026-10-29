@@ -764,6 +764,8 @@ class TestsManager:
                 _EXECUTION_BACKEND == "dlsps2"
                 and total_streams == 1
                 and not internal_spec.execution_config.enable_latency_metrics
+                and internal_spec.execution_config.output_mode
+                != InternalOutputMode.LIVE_STREAM
             )
             if use_dlsps2:
                 runner = Dlsps2PipelineRunner(

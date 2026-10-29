@@ -674,8 +674,15 @@ class PipelineManager:
                     codec, target_device
                 )
 
-            # Apply looping modifications if needed
-            if needs_looping:
+            # File-backed live previews loop inside GStreamer so the RTSP
+            # publisher and loaded inference models stay alive across repeats.
+            has_live_source = any(
+                node.type in {"v4l2src", "rtspsrc"} for node in base_graph.nodes
+            )
+            if needs_looping and not (
+                execution_config.output_mode == InternalOutputMode.LIVE_STREAM
+                and has_live_source
+            ):
                 base_graph = base_graph.apply_looping_modifications()
 
             output_mode = execution_config.output_mode

@@ -331,6 +331,7 @@ class PipelineRunner:
         enable_latency_metrics: bool = False,
         job_id: str | None = None,
         on_event: Callable[[PipelineEvent], None] | None = None,
+        repeat_on_eos: bool = False,
     ):
         """
         Initialize the PipelineRunner.
@@ -374,6 +375,8 @@ class PipelineRunner:
                 for every live :class:`PipelineEvent` parsed in normal
                 mode: ``vippet-event`` element messages (e.g. proximity
                 trigger fired) and ``gvagenai`` text results.
+            repeat_on_eos: Restart a cleanly completed pipeline during a
+                time-limited live preview, re-opening its source and outputs.
         """
         self.mode = mode
         self.max_runtime = max_runtime
@@ -403,6 +406,7 @@ class PipelineRunner:
         self.enable_latency_metrics = enable_latency_metrics
         self.job_id = job_id
         self.on_event = on_event
+        self.repeat_on_eos = repeat_on_eos
         self.logger = logging.getLogger("PipelineRunner")
         self.logger_level = self._get_log_level()
         self.logger.setLevel(self.logger_level)
@@ -493,8 +497,43 @@ class PipelineRunner:
 
         if self.mode == "validation":
             return self._run_validation(pipeline_command)
-        else:
+
+        if not self.repeat_on_eos or self.max_runtime <= 0:
             return self._run_normal(pipeline_command, total_streams)
+
+        total_runtime = self.max_runtime
+        started_at = time.monotonic()
+        result: PipelineResult | None = None
+        try:
+            while True:
+                elapsed = time.monotonic() - started_at
+                remaining = total_runtime - elapsed
+                if remaining <= 0:
+                    break
+
+                self.max_runtime = remaining
+                result = self._run_normal(pipeline_command, total_streams)
+                if result.exit_code != 0 or result.cancelled or self.cancelled:
+                    return result
+
+                if time.monotonic() - started_at >= total_runtime:
+                    break
+
+                self.logger.info(
+                    "Pipeline completed before its runtime limit; restarting "
+                    "the live preview from the beginning."
+                )
+
+            if result is None:
+                return PipelineResult(
+                    cancelled=self.cancelled,
+                    stdout=[],
+                    stderr=[],
+                    latency_tracer_metrics=self.latency_tracer_metrics,
+                )
+            return result
+        finally:
+            self.max_runtime = total_runtime
 
     def _run_validation(self, pipeline_command: str) -> PipelineResult:
         """
@@ -644,7 +683,6 @@ class PipelineRunner:
             self.logger_level,
             pipeline_command,
         ]
-
         self.logger.info(f"Pipeline Command: {' '.join(pipeline_cmd)}")
 
         try:
